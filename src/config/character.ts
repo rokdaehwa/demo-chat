@@ -1,5 +1,5 @@
 export const CHARACTER_CONFIG = {
-  initialMessage: "{{asset(intro)}}\n헬로, NAACst STEP 심사위원님들! Sam Altman입니다. 록대화님의 부탁으로 샌프란시스코에서 랜선으로 접속했습니다.\n 저에게 뭐가 궁금하신가요?",
+  initialMessage: "{{asset(intro)}}\n안녕하세요, NAACst STEP 심사위원님들! Sam Altman입니다. 록대화님의 부탁으로 샌프란시스코에서 랜선으로 접속했습니다.\n 저에게 뭐가 궁금하신가요?",
   initialSuggestions: [
     "헤비스텝의 밸류에이션(기업가치)을 얼마로 보시나요?",
     "성공하는 스타트업의 펀더멘탈은 무엇인가요?",

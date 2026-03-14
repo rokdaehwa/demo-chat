@@ -1,14 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { SendHorizonal, Bot, User, AlertCircle, Settings, X, Copy, RotateCcw, Check, Image as ImageIcon, MessageSquareQuote, Plus, Trash2, Hash, MessageCircle, MoreVertical, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { SendHorizonal, AlertCircle, Settings, X, Copy, RotateCcw, Check, ImageIcon, MessageCircle, User, MessageSquareQuote, Trash2 } from 'lucide-react';
 import { parseSSEStream } from '@/lib/sse';
 import { CHARACTER_CONFIG } from '@/config/character';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { MessageRenderer, parseChunks, Message } from '@/components/chat/MessageRenderer';
+import { GlassSection, GlassInputBox, GlassTextarea } from '@/components/chat/GlassComponents';
 
 interface Asset {
   id: string;
@@ -18,12 +15,6 @@ interface Asset {
   url: string;
   primaryButton?: string;
   secondaryButton?: string;
-}
-
-interface RenderChunk {
-  role: 'user' | 'assistant';
-  type: 'text' | 'asset';
-  value: string;
 }
 
 export default function ChatPage() {
@@ -62,7 +53,17 @@ export default function ChatPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [demoFeedbackId, setDemoFeedbackId] = useState<string | null>(null);
+  const [triggerScroll, setTriggerScroll] = useState(0);
+  const [isLastMessageFullyVisible, setIsLastMessageFullyVisible] = useState(false);
   
+  const handleBubbleComplete = useCallback(() => {
+    setTriggerScroll(prev => prev + 1);
+  }, []);
+
+  const handleAllComplete = useCallback(() => {
+    setIsLastMessageFullyVisible(true);
+  }, []);
+
   const handleDemoAction = (id: string) => {
     setDemoFeedbackId(id);
     setTimeout(() => setDemoFeedbackId(null), 2000);
@@ -99,15 +100,19 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
     }
-  }, [messages, isLoading]);
+  }, [messages, isLoading, triggerScroll]);
 
   const resetChat = () => {
     setMessages([{ role: 'assistant', content: initialMessage }]);
     setActiveSuggestions(initialSuggestions);
     setInput('');
     setError(null);
+    setIsLastMessageFullyVisible(false);
   };
 
   const handleSend = async (text: string = input) => {
@@ -117,6 +122,7 @@ export default function ChatPage() {
     setInput('');
     setActiveSuggestions([]);
     setIsLoading(true);
+    setIsLastMessageFullyVisible(false);
     setError(null);
 
     const newMessages: Message[] = [...messages, { role: 'user', content: userMessage }];
@@ -166,39 +172,6 @@ export default function ChatPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const parseChunks = (m: Message): RenderChunk[] => {
-    if (m.role === 'user') return [{ role: 'user', type: 'text', value: m.content }];
-    const cleanedContent = m.content.replace(/^["']|["']$/g, '');
-    
-    // If empty (typing state), return a placeholder chunk
-    if (!cleanedContent.trim()) return [{ role: 'assistant', type: 'text', value: '' }];
-
-    const chunks: RenderChunk[] = [];
-    const assetRegex = /\{\{asset\((.*?)\)\}\}/g;
-    let lastIndex = 0;
-    let match;
-    while ((match = assetRegex.exec(cleanedContent)) !== null) {
-      if (match.index > lastIndex) {
-        const text = cleanedContent.slice(lastIndex, match.index);
-        chunks.push(...splitSentences(text));
-      }
-      chunks.push({ role: 'assistant', type: 'asset', value: match[1] });
-      lastIndex = assetRegex.lastIndex;
-    }
-    if (lastIndex < cleanedContent.length) {
-      const text = cleanedContent.slice(lastIndex);
-      chunks.push(...splitSentences(text));
-    }
-    return chunks;
-  };
-
-  const splitSentences = (text: string): RenderChunk[] => {
-    const regex = /[^.!?]+[.!?]*["'”’)]*/g;
-    const matches = text.match(regex);
-    if (!matches) return text.trim() ? [{ role: 'assistant', type: 'text', value: text.trim() }] : [];
-    return matches.map(s => ({ role: 'assistant' as const, type: 'text' as const, value: s.trim() })).filter(chunk => chunk.value.length > 0);
   };
 
   // Asset Handlers
@@ -255,100 +228,26 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 pb-28 no-scrollbar">
-          {messages.flatMap((m, msgIdx) => parseChunks(m).map((chunk, chunkIdx) => {
-            const matchingAsset = chunk.type === 'asset' ? assets.find(a => a.slug === chunk.value) : null;
-            return (
-              <div key={`${msgIdx}-${chunkIdx}`} className={`flex items-start gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-500`}>
-                {chunk.type === 'asset' ? (
-                  <div className="max-w-[90%] flex flex-col gap-2 py-1">
-                    <div className="rounded-xl overflow-hidden">
-                      {matchingAsset ? (
-                        <img src={matchingAsset.url} alt={matchingAsset.altText} className="w-full h-auto rounded-lg" />
-                      ) : (
-                        <div className="p-8 flex flex-col items-center gap-3 text-black/20 font-medium text-[10px] uppercase italic bg-white/40 backdrop-blur-sm rounded-xl border border-black/5">
-                          <ImageIcon size={24} strokeWidth={1.5} />
-                          DETACHED_ASSET: {chunk.value}
-                        </div>
-                      )}
-                    </div>
-                    {matchingAsset && (matchingAsset.primaryButton || matchingAsset.secondaryButton) && (
-                      <div className="flex gap-2 px-0.5 relative">
-                        {matchingAsset.primaryButton && (
-                          <button 
-                            onClick={() => handleDemoAction(`${msgIdx}-${chunkIdx}`)}
-                            className={`flex-1 py-2.5 text-white rounded-xl font-bold text-[11px] shadow-lg shadow-black/5 hover:scale-[1.01] active:scale-[0.99] transition-all ${demoFeedbackId === `${msgIdx}-${chunkIdx}` ? 'bg-black/70' : 'bg-black'}`}
-                          >
-                            {demoFeedbackId === `${msgIdx}-${chunkIdx}` ? '⚠️ 데모 기능입니다' : matchingAsset.primaryButton}
-                          </button>
-                        )}
-                        <button 
-                          onClick={() => setOpenMenuId(openMenuId === `${msgIdx}-${chunkIdx}` ? null : `${msgIdx}-${chunkIdx}`)}
-                          className={`w-9 h-9 shrink-0 bg-white/60 border border-black/5 rounded-xl flex items-center justify-center transition-all shadow-sm ${openMenuId === `${msgIdx}-${chunkIdx}` ? 'bg-black/5 text-black' : 'text-black/50 hover:bg-white/90 hover:text-black/80'}`}
-                        >
-                          <MoreVertical size={16} />
-                        </button>
-
-                        {/* Dropdown Menu */}
-                        {openMenuId === `${msgIdx}-${chunkIdx}` && (
-                          <div className="absolute top-[2.5rem] right-0 mt-1 w-[200px] bg-white/95 backdrop-blur-md border border-black/5 rounded-2xl shadow-xl shadow-black/10 z-50 overflow-hidden flex flex-col p-1 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
-                            {matchingAsset.secondaryButton && (
-                              <button 
-                                onClick={() => setOpenMenuId(null)}
-                                className="w-full text-left px-3 py-2.5 hover:bg-black/5 rounded-xl text-[11px] font-bold text-black/70 transition-colors"
-                              >
-                                {matchingAsset.secondaryButton}
-                              </button>
-                            )}
-                            {(matchingAsset.primaryButton || matchingAsset.secondaryButton) && <div className="h-px bg-black/5 my-0.5 mx-2" />}
-                            <button 
-                              onClick={() => setOpenMenuId(null)}
-                              className="w-full text-left px-3 py-2.5 hover:bg-blue-50/50 rounded-xl text-[11px] font-bold text-black/70 hover:text-blue-600 transition-colors flex items-center gap-2"
-                            >
-                              <ThumbsUp size={12} />
-                              이 추천이 마음에 들어요
-                            </button>
-                            <button 
-                              onClick={() => setOpenMenuId(null)}
-                              className="w-full text-left px-3 py-2.5 hover:bg-red-50/50 rounded-xl text-[11px] font-bold text-black/70 hover:text-red-600 transition-colors flex items-center gap-2"
-                            >
-                              <ThumbsDown size={12} />
-                              이 추천이 마음에 안 들어요
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className={`max-w-[85%] p-3 px-4 rounded-[20px] text-[13px] leading-relaxed ${
-                    m.role === 'user' 
-                      ? 'bg-black text-white rounded-tr-none shadow-lg shadow-black/5' 
-                      : 'bg-white/80 border border-black/5 rounded-tl-none shadow-sm backdrop-blur-sm'
-                  }`}>
-                    <div className="flex items-center min-h-[1.25rem]">
-                      {chunk.value || (isLoading && msgIdx === messages.length - 1) ? (
-                        <div className="whitespace-pre-wrap">{chunk.value}</div>
-                      ) : null}
-                      
-                      {isLoading && msgIdx === messages.length - 1 && !chunk.value && (
-                        <div className="flex gap-1 items-center px-1" title="SAMA is typing...">
-                          <div className="typing-dot" />
-                          <div className="typing-dot" />
-                          <div className="typing-dot" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          }))}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 pb-28 no-scrollbar">
+          {messages.map((m, msgIdx) => (
+            <MessageRenderer 
+              key={msgIdx} 
+              m={m} 
+              assets={assets}
+              isLoading={isLoading && msgIdx === messages.length - 1}
+              handleDemoAction={handleDemoAction}
+              openMenuId={openMenuId}
+              setOpenMenuId={setOpenMenuId}
+              demoFeedbackId={demoFeedbackId}
+              onBubbleComplete={handleBubbleComplete}
+              onAllComplete={msgIdx === messages.length - 1 ? handleAllComplete : undefined}
+            />
+          ))}
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 pt-6 bg-gradient-to-t from-white via-white/80 to-transparent">
           <div className="flex flex-col gap-3">
-            {activeSuggestions.length > 0 && !isLoading && (
+            {activeSuggestions.length > 0 && !isLoading && isLastMessageFullyVisible && (
               <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
                 {activeSuggestions.filter(s => s.trim()).map((s, i) => (
                   <button key={i} onClick={() => handleSend(s)} className="whitespace-nowrap px-3 py-1.5 bg-white border border-black/5 rounded-full font-bold text-[10px] shadow-sm hover:translate-y-[-1px] transition-all">
@@ -379,7 +278,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* 2. Settings Section - State-Controlled for reuse */}
+      {/* 2. Settings Section */}
       {showSettings && (
         <div className="settings-section no-scrollbar animate-in slide-in-from-right duration-500 relative">
           <div className="flex flex-col gap-4 mb-6 pb-4 border-b border-black/5 sticky top-0 z-10 bg-[rgba(255,255,255,0.85)] backdrop-blur-xl -mx-5 px-5 pt-5 -mt-5">
@@ -395,14 +294,12 @@ export default function ChatPage() {
             <div className="flex items-center gap-2">
               <button 
                 onClick={resetChat} 
-                title="변경된 설정을 즉시 적용하고 대화를 처음부터 다시 시작합니다."
                 className="flex-1 py-2.5 bg-black text-white rounded-xl font-bold text-[11px] shadow-sm shadow-black/10 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-1.5"
               >
                  <RotateCcw size={14} /> Apply & Reset
               </button>
               <button 
                 onClick={copyConfig} 
-                title="현재의 모든 설정값을 JSON 형태로 복사하여 백업하거나 다른 환경에 붙여넣을 수 있습니다."
                 className={`flex-1 py-2.5 rounded-xl font-bold text-[11px] transition-all flex items-center justify-center gap-1.5 ${isCopied ? 'bg-green-500 text-white shadow-green-200 shadow-sm' : 'bg-white border border-black/5 text-black hover:bg-black/5'}`}
               >
                 {isCopied ? <Check size={14} /> : <Copy size={14} />}
@@ -411,111 +308,69 @@ export default function ChatPage() {
             </div>
           </div>
 
-        <div className="space-y-8 flex-1">
-          <GlassSection label="Entrypoint" icon={<MessageCircle size={14} />}>
-            <div className="space-y-3">
-              <GlassTextarea label="WELCOME_MESSAGE" value={initialMessage} onChange={setInitialMessage} height="h-24" />
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="font-bold text-[9px] text-black/40 uppercase tracking-wider">Initial Suggestions</span>
-                  <button onClick={() => setInitialSuggestions([...initialSuggestions, ""])} className="text-[9px] font-bold text-black/60 hover:text-black">+ ADD</button>
+          <div className="space-y-8 flex-1">
+            <GlassSection label="Entrypoint" icon={<MessageCircle size={14} />}>
+              <div className="space-y-3">
+                <GlassTextarea label="WELCOME_MESSAGE" value={initialMessage} onChange={setInitialMessage} height="h-24" />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="font-bold text-[9px] text-black/40 uppercase tracking-wider">Initial Suggestions</span>
+                    <button onClick={() => setInitialSuggestions([...initialSuggestions, ""])} className="text-[9px] font-bold text-black/60 hover:text-black">+ ADD</button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {initialSuggestions.map((s, i) => (
+                      <div key={i} className="flex gap-1.5">
+                         <input value={s} onChange={(e) => { const n = [...initialSuggestions]; n[i]=e.target.value; setInitialSuggestions(n); }} className="flex-1 px-3 py-2 bg-white/60 border border-black/5 rounded-xl text-[11px] font-medium focus:bg-white outline-none transition-all shadow-sm" />
+                         <button onClick={() => setInitialSuggestions(initialSuggestions.filter((_, idx)=>idx!==i))} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-red-50 text-black/20 hover:text-red-500 transition-all"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  {initialSuggestions.map((s, i) => (
-                    <div key={i} className="flex gap-1.5">
-                       <input value={s} onChange={(e) => { const n = [...initialSuggestions]; n[i]=e.target.value; setInitialSuggestions(n); }} className="flex-1 px-3 py-2 bg-white/60 border border-black/5 rounded-xl text-[11px] font-medium focus:bg-white outline-none transition-all shadow-sm" />
-                       <button onClick={() => setInitialSuggestions(initialSuggestions.filter((_, idx)=>idx!==i))} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-red-50 text-black/20 hover:text-red-500 transition-all"><X size={14} /></button>
+              </div>
+            </GlassSection>
+
+            <GlassSection label="Cognitive Core" icon={<User size={14} />}>
+              <div className="space-y-3">
+                <GlassInputBox label="PERSONA" value={persona} onChange={setPersona} />
+                <GlassTextarea label="CHARACTER_PROMPT" value={character} onChange={setCharacter} height="h-32" />
+              </div>
+            </GlassSection>
+
+            <GlassSection label="System Override" icon={<MessageSquareQuote size={14} />}>
+              <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} className="w-full p-4 bg-white/60 border border-black/5 rounded-[16px] font-mono text-[10px] h-24 focus:bg-white outline-none transition-all" placeholder="Manual system override..." />
+            </GlassSection>
+
+            <GlassSection label="Visual Matrix" icon={<ImageIcon size={14} />}>
+              <div className="space-y-3">
+                <button onClick={() => fileInputRef.current?.click()} className="w-full py-3 border border-dashed border-black/10 rounded-[16px] bg-white/40 font-bold text-[10px] text-black/40 hover:bg-white/70 hover:border-black/20 transition-all">
+                  UPLOAD_NEW_ASSET
+                </button>
+                <input type="file" ref={fileInputRef} onChange={handleFileAdd} multiple className="hidden" accept="image/*" />
+                <div className="grid gap-3">
+                  {assets.map((asset) => (
+                    <div key={asset.id} className="p-3 bg-white/80 border border-black/5 rounded-[20px] shadow-sm space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl overflow-hidden border border-black/5">
+                          <img src={asset.url} alt="" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[11px] truncate">{asset.fileName}</p>
+                          <p className="text-[9px] text-black/30 font-bold">{asset.slug}</p>
+                        </div>
+                        <button onClick={() => setAssets(assets.filter(a=>a.id!==asset.id))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 text-black/10 hover:text-red-500 transition-all"><Trash2 size={14} /></button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                         <input value={asset.slug} onChange={(e) => updateAsset(asset.id, { slug: e.target.value })} className="px-2 py-1.5 bg-black/5 rounded-lg font-mono text-[9px] outline-none" placeholder="SLUG" />
+                         <input value={asset.altText} onChange={(e) => updateAsset(asset.id, { altText: e.target.value })} className="px-2 py-1.5 bg-black/5 rounded-lg font-medium text-[9px] outline-none" placeholder="ALT_TEXT" />
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
-            </div>
-          </GlassSection>
-
-          <GlassSection label="Cognitive Core" icon={<User size={14} />}>
-            <div className="space-y-3">
-              <GlassInputBox label="PERSONA" value={persona} onChange={setPersona} />
-              <GlassTextarea label="CHARACTER_PROMPT" value={character} onChange={setCharacter} height="h-32" />
-            </div>
-          </GlassSection>
-
-          <GlassSection label="System Override" icon={<MessageSquareQuote size={14} />}>
-            <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} className="w-full p-4 bg-white/60 border border-black/5 rounded-[16px] font-mono text-[10px] h-24 focus:bg-white outline-none transition-all" placeholder="Manual system override..." />
-          </GlassSection>
-
-          <GlassSection label="Visual Matrix" icon={<ImageIcon size={14} />}>
-            <div className="space-y-3">
-              <button onClick={() => fileInputRef.current?.click()} className="w-full py-3 border border-dashed border-black/10 rounded-[16px] bg-white/40 font-bold text-[10px] text-black/40 hover:bg-white/70 hover:border-black/20 transition-all">
-                UPLOAD_NEW_ASSET
-              </button>
-              <input type="file" ref={fileInputRef} onChange={handleFileAdd} multiple className="hidden" accept="image/*" />
-              <div className="grid gap-3">
-                {assets.map((asset) => (
-                  <div key={asset.id} className="p-3 bg-white/80 border border-black/5 rounded-[20px] shadow-sm space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl overflow-hidden border border-black/5">
-                        <img src={asset.url} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-[11px] truncate">{asset.fileName}</p>
-                        <p className="text-[9px] text-black/30 font-bold">{asset.slug}</p>
-                      </div>
-                      <button onClick={() => setAssets(assets.filter(a=>a.id!==asset.id))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 text-black/10 hover:text-red-500 transition-all"><Trash2 size={14} /></button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5">
-                       <input value={asset.slug} onChange={(e) => updateAsset(asset.id, { slug: e.target.value })} className="px-2 py-1.5 bg-black/5 rounded-lg font-mono text-[9px] outline-none" placeholder="SLUG" />
-                       <input value={asset.altText} onChange={(e) => updateAsset(asset.id, { altText: e.target.value })} className="px-2 py-1.5 bg-black/5 rounded-lg font-medium text-[9px] outline-none" placeholder="ALT_TEXT" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </GlassSection>
+            </GlassSection>
+          </div>
         </div>
-      </div>
-    )}
-    </div>
-  );
-}
-
-// Sub-components for Glassmorphism UI
-function GlassSection({ label, icon, children }: { label: string, icon: React.ReactNode, children: React.ReactNode }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3 px-1">
-        <div className="w-7 h-7 rounded-lg bg-white/50 flex items-center justify-center text-black/40 border border-black/5 shadow-sm">
-          {icon}
-        </div>
-        <h3 className="font-bold text-[11px] uppercase tracking-[0.2em] text-black/40">{label}</h3>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function GlassInputBox({ label, value, onChange }: { label: string, value: string, onChange: (v: string) => void }) {
-  return (
-    <div className="space-y-2 px-1">
-      <label className="font-bold text-[10px] text-black/30 uppercase tracking-wider pl-1">{label}</label>
-      <input 
-        type="text" 
-        value={value} 
-        onChange={(e) => onChange(e.target.value)} 
-        className="glass-input w-full font-semibold text-sm" 
-      />
-    </div>
-  );
-}
-
-function GlassTextarea({ label, value, onChange, height = "h-28" }: { label: string, value: string, onChange: (v: string) => void, height?: string }) {
-  return (
-    <div className="space-y-2 px-1">
-      <label className="font-bold text-[10px] text-black/30 uppercase tracking-wider pl-1">{label}</label>
-      <textarea 
-        value={value} 
-        onChange={(e) => onChange(e.target.value)} 
-        className={`glass-input w-full font-semibold text-sm resize-none ${height}`} 
-      />
+      )}
     </div>
   );
 }
