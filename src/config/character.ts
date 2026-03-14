@@ -64,22 +64,30 @@ export const CHARACTER_CONFIG = {
     {
       slug: "newct",
       altText: "새로운 콘텐츠 모드",
-      path: "/assets/새로운 콘텐츠 모드.png"
+      path: "/assets/새로운 콘텐츠 모드.png",
+      primaryButton: "신규 모드 시작",
+      secondaryButton: "다음에 할게요"
     },
     {
       slug: "origc",
       altText: "원작 추천",
-      path: "/assets/원작 추천.png"
+      path: "/assets/원작 추천.png",
+      primaryButton: "바로 시청하기",
+      secondaryButton: "다음에 볼게요"
     },
     {
       slug: "paidc",
       altText: "유료 콘텐츠 추천",
-      path: "/assets/유료 콘텐츠 추천.png"
+      path: "/assets/유료 콘텐츠 추천.png",
+      primaryButton: "바로 구매하기($99)",
+      secondaryButton: "다음에 볼게요"
     },
     {
       slug: "merch",
       altText: "파생 상품 추천",
-      path: "/assets/파생 상품 추천.png"
+      path: "/assets/파생 상품 추천.png",
+      primaryButton: "바로 구매하기 ($149 →$89)",
+      secondaryButton: "다음에 볼게요"
     }
   ]
 };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { SendHorizonal, Bot, User, AlertCircle, Settings, X, Copy, RotateCcw, Check, Image as ImageIcon, MessageSquareQuote, Plus, Trash2, Hash, MessageCircle } from 'lucide-react';
+import { SendHorizonal, Bot, User, AlertCircle, Settings, X, Copy, RotateCcw, Check, Image as ImageIcon, MessageSquareQuote, Plus, Trash2, Hash, MessageCircle, MoreVertical, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { parseSSEStream } from '@/lib/sse';
 import { CHARACTER_CONFIG } from '@/config/character';
 
@@ -16,6 +16,8 @@ interface Asset {
   altText: string;
   fileName: string;
   url: string;
+  primaryButton?: string;
+  secondaryButton?: string;
 }
 
 interface RenderChunk {
@@ -41,7 +43,9 @@ export default function ChatPage() {
         slug: a.slug,
         altText: a.altText,
         fileName: a.path.split('/').pop() || 'Static',
-        url: a.path 
+        url: a.path,
+        primaryButton: (a as any).primaryButton,
+        secondaryButton: (a as any).secondaryButton
       }))
     );
   }, []);
@@ -56,6 +60,13 @@ export default function ChatPage() {
   const [model, setModel] = useState('gemini-2.5-flash');
   const [isCopied, setIsCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [demoFeedbackId, setDemoFeedbackId] = useState<string | null>(null);
+  
+  const handleDemoAction = (id: string) => {
+    setDemoFeedbackId(id);
+    setTimeout(() => setDemoFeedbackId(null), 2000);
+  };
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -250,13 +261,62 @@ export default function ChatPage() {
             return (
               <div key={`${msgIdx}-${chunkIdx}`} className={`flex items-start gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-500`}>
                 {chunk.type === 'asset' ? (
-                  <div className="max-w-[90%] rounded-xl overflow-hidden py-1">
-                    {matchingAsset ? (
-                      <img src={matchingAsset.url} alt={matchingAsset.altText} className="w-full h-auto rounded-lg" />
-                    ) : (
-                      <div className="p-8 flex flex-col items-center gap-3 text-black/20 font-medium text-[10px] uppercase italic bg-white/40 backdrop-blur-sm rounded-xl">
-                        <ImageIcon size={24} strokeWidth={1.5} />
-                        DETACHED_ASSET: {chunk.value}
+                  <div className="max-w-[90%] flex flex-col gap-2 py-1">
+                    <div className="rounded-xl overflow-hidden">
+                      {matchingAsset ? (
+                        <img src={matchingAsset.url} alt={matchingAsset.altText} className="w-full h-auto rounded-lg" />
+                      ) : (
+                        <div className="p-8 flex flex-col items-center gap-3 text-black/20 font-medium text-[10px] uppercase italic bg-white/40 backdrop-blur-sm rounded-xl border border-black/5">
+                          <ImageIcon size={24} strokeWidth={1.5} />
+                          DETACHED_ASSET: {chunk.value}
+                        </div>
+                      )}
+                    </div>
+                    {matchingAsset && (matchingAsset.primaryButton || matchingAsset.secondaryButton) && (
+                      <div className="flex gap-2 px-0.5 relative">
+                        {matchingAsset.primaryButton && (
+                          <button 
+                            onClick={() => handleDemoAction(`${msgIdx}-${chunkIdx}`)}
+                            className={`flex-1 py-2.5 text-white rounded-xl font-bold text-[11px] shadow-lg shadow-black/5 hover:scale-[1.01] active:scale-[0.99] transition-all ${demoFeedbackId === `${msgIdx}-${chunkIdx}` ? 'bg-black/70' : 'bg-black'}`}
+                          >
+                            {demoFeedbackId === `${msgIdx}-${chunkIdx}` ? '⚠️ 데모 기능입니다' : matchingAsset.primaryButton}
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => setOpenMenuId(openMenuId === `${msgIdx}-${chunkIdx}` ? null : `${msgIdx}-${chunkIdx}`)}
+                          className={`w-9 h-9 shrink-0 bg-white/60 border border-black/5 rounded-xl flex items-center justify-center transition-all shadow-sm ${openMenuId === `${msgIdx}-${chunkIdx}` ? 'bg-black/5 text-black' : 'text-black/50 hover:bg-white/90 hover:text-black/80'}`}
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+
+                        {/* Dropdown Menu */}
+                        {openMenuId === `${msgIdx}-${chunkIdx}` && (
+                          <div className="absolute top-[2.5rem] right-0 mt-1 w-[200px] bg-white/95 backdrop-blur-md border border-black/5 rounded-2xl shadow-xl shadow-black/10 z-50 overflow-hidden flex flex-col p-1 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                            {matchingAsset.secondaryButton && (
+                              <button 
+                                onClick={() => setOpenMenuId(null)}
+                                className="w-full text-left px-3 py-2.5 hover:bg-black/5 rounded-xl text-[11px] font-bold text-black/70 transition-colors"
+                              >
+                                {matchingAsset.secondaryButton}
+                              </button>
+                            )}
+                            {(matchingAsset.primaryButton || matchingAsset.secondaryButton) && <div className="h-px bg-black/5 my-0.5 mx-2" />}
+                            <button 
+                              onClick={() => setOpenMenuId(null)}
+                              className="w-full text-left px-3 py-2.5 hover:bg-blue-50/50 rounded-xl text-[11px] font-bold text-black/70 hover:text-blue-600 transition-colors flex items-center gap-2"
+                            >
+                              <ThumbsUp size={12} />
+                              이 추천이 마음에 들어요
+                            </button>
+                            <button 
+                              onClick={() => setOpenMenuId(null)}
+                              className="w-full text-left px-3 py-2.5 hover:bg-red-50/50 rounded-xl text-[11px] font-bold text-black/70 hover:text-red-600 transition-colors flex items-center gap-2"
+                            >
+                              <ThumbsDown size={12} />
+                              이 추천이 마음에 안 들어요
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -321,16 +381,35 @@ export default function ChatPage() {
 
       {/* 2. Settings Section - State-Controlled for reuse */}
       {showSettings && (
-        <div className="settings-section no-scrollbar animate-in slide-in-from-right duration-500">
-          <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-md border border-black/5">
-            <Settings size={20} className="text-black/70" />
+        <div className="settings-section no-scrollbar animate-in slide-in-from-right duration-500 relative">
+          <div className="flex flex-col gap-4 mb-6 pb-4 border-b border-black/5 sticky top-0 z-10 bg-[rgba(255,255,255,0.85)] backdrop-blur-xl -mx-5 px-5 pt-5 -mt-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-md border border-black/5">
+                <Settings size={20} className="text-black/70" />
+              </div>
+              <div>
+                <h2 className="font-bold text-base gradient-text">Character Lab</h2>
+                <p className="text-[9px] font-bold text-black/30 uppercase tracking-widest leading-none">Protocol config</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={resetChat} 
+                title="변경된 설정을 즉시 적용하고 대화를 처음부터 다시 시작합니다."
+                className="flex-1 py-2.5 bg-black text-white rounded-xl font-bold text-[11px] shadow-sm shadow-black/10 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-1.5"
+              >
+                 <RotateCcw size={14} /> Apply & Reset
+              </button>
+              <button 
+                onClick={copyConfig} 
+                title="현재의 모든 설정값을 JSON 형태로 복사하여 백업하거나 다른 환경에 붙여넣을 수 있습니다."
+                className={`flex-1 py-2.5 rounded-xl font-bold text-[11px] transition-all flex items-center justify-center gap-1.5 ${isCopied ? 'bg-green-500 text-white shadow-green-200 shadow-sm' : 'bg-white border border-black/5 text-black hover:bg-black/5'}`}
+              >
+                {isCopied ? <Check size={14} /> : <Copy size={14} />}
+                {isCopied ? 'COPIED' : 'Export Config'}
+              </button>
+            </div>
           </div>
-          <div>
-            <h2 className="font-bold text-base gradient-text">Character Lab</h2>
-            <p className="text-[9px] font-bold text-black/30 uppercase tracking-widest leading-none">Protocol config</p>
-          </div>
-        </div>
 
         <div className="space-y-8 flex-1">
           <GlassSection label="Entrypoint" icon={<MessageCircle size={14} />}>
@@ -392,16 +471,6 @@ export default function ChatPage() {
               </div>
             </div>
           </GlassSection>
-        </div>
-
-        <div className="pt-6 space-y-3 shrink-0">
-          <button onClick={resetChat} className="w-full py-3.5 bg-black text-white rounded-xl font-bold text-xs shadow-xl shadow-black/10 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2">
-             <RotateCcw size={16} /> Apply & Reset Chat
-          </button>
-          <button onClick={copyConfig} className={`w-full py-3.5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${isCopied ? 'bg-green-500 text-white shadow-green-200 shadow-lg' : 'bg-white border border-black/5 text-black hover:bg-black/5'}`}>
-            {isCopied ? <Check size={16} /> : <Copy size={16} />}
-            {isCopied ? 'COPIED' : 'Export Config (JSON)'}
-          </button>
         </div>
       </div>
     )}
